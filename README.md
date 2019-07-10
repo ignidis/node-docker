@@ -1,7 +1,6 @@
-# node-docker
+# This is the CYBEARTH BRANCH of this project
 
-A node image including yarn as package manager and pm2 as process manager.
-Designed to host multiple node applications; this is Non canon, but saves host memory, use at your own discretion. You can also use to host a single service.
-The image is openshift ready and can also be used in a conventional Docker environment.
+Here you will encounter special variations of the master branch tailored for my personal use.
 
-The builder uses a container to flatten the image layers.
+This branch adds external volumes for the configuration and the noderoot, additional modules and components that specialize the image for MY environment.
+Feel free to look around.
