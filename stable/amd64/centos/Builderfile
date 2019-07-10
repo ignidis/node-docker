@@ -1,0 +1,179 @@
+# nodejs image
+#
+# ------------------------------------------------------------------------------
+#
+# ------------------------------------------------------------------------------
+#
+FROM    cybearth/centos:7
+
+#
+# Build Time Arguments
+#
+ARG NAME
+ARG APP_ROOT
+ARG NODE_VERSION
+ARG NODE_SHORT_REPO
+ARG YARN_VERSION
+ARG NODE_SVC_NAME
+ARG NODE_SVC_UID
+
+RUN \
+#
+# Set Installation Parameters
+#
+    LC_ALL="en_US.UTF-8" \
+    LANG="en_US.UTF-8" \
+    LANGUAGE="en_US.UTF-8" \
+#
+# Define Service Account variables
+#
+	SERVICE_USER=${NODE_SVC_NAME}; \
+	SERVICE_USER_UID=${NODE_SVC_UID}; \
+	SERVICE_GROUP=${NODE_SVC_NAME}; \
+	SERVICE_GROUP_UID=${NODE_SVC_UID}; \
+#
+# Create service group and service account
+#
+	groupadd -g "$SERVICE_GROUP_UID" "$SERVICE_GROUP"; \
+	useradd -u "$SERVICE_USER_UID" -g "$SERVICE_GROUP" -G root --shell /bin/bash -M --home /var/lib/node "$SERVICE_USER"; \
+#
+# Update Base image
+#
+#	yum -y update && yum -y upgrade; \ 
+#
+#
+# Add EPEL official repositories for required dependencies
+#
+    yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm; \
+#
+# Install helper packages
+#
+	yum -y install \
+		wget \
+		epel-release \
+		dpkg \
+	;
+#
+#
+# Install nodeJS and supporting packages
+#
+RUN \
+    ln -s -f /bin/true /usr/bin/chfn; \
+    mkdir -p "${APP_ROOT}"; \ 
+#
+#
+# Install the nodeJS Runtime
+#
+# Add the nodeJS Release team's, gpg keys to our keyring
+# gpg keys listed at https://github.com/nodejs/node#release-team
+    set -ex; \
+    for key in \
+		4ED778F539E3634C779C87C6D7062848A1AB005C \
+		B9E2F5981AA6E0CD28160D9FF13993A75599653C \
+		B9AE9905FFD7803F25714661B63B535A4C206CA9 \
+		77984A986EBC2AA786BC0F66B01FBB92821C587A \
+		71DCFD284A79C3B38668286BC97EC7A07EDE3FC1 \
+		FD3A5288F042B6850C66B31F09FE44734EB7990E \
+		8FCCA13FEF1D0C2E91008E09770F7A9A5AE15600 \
+		C4F0DFFF4E8C1A8236409D08E73BC641CC11F4C8 \
+        DD8F2338BAE7501E3DD5AC78C273792F7D83545D \
+		A48C2BEE680E841632CD4E44F07496B3EB3C1762 \
+    ;   do \
+            gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key"; \
+        done; \
+    ARCH= \ 
+        dpkgArch="$(dpkg --print-architecture)"; \
+        case "${dpkgArch##*-}" in \
+            amd64) ARCH='x64';; \
+            ppc64el) ARCH='ppc64le';; \
+            s390x) ARCH='s390x';; \
+            arm64) ARCH='arm64';; \
+            armhf) ARCH='armv7l';; \
+            i386) ARCH='x86';; \
+            *) echo "unsupported architecture"; exit 1 ;; \
+        esac; \
+    curl -fSLO --compressed "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH.tar.xz"; \
+    curl -fSLO --compressed "https://nodejs.org/dist/v$NODE_VERSION/SHASUMS256.txt.asc"; \ 
+    gpg --batch --decrypt --output SHASUMS256.txt SHASUMS256.txt.asc; \ 
+    grep " node-v$NODE_VERSION-linux-$ARCH.tar.xz\$" SHASUMS256.txt | sha256sum -c -; \ 
+    tar -xJf "node-v$NODE_VERSION-linux-$ARCH.tar.xz" -C "${APP_ROOT}" --no-same-owner; \ 
+    ln -s "${APP_ROOT}/node-v$NODE_VERSION-linux-$ARCH" "${APP_ROOT}/node"; \ 
+    ln -s "${APP_ROOT}/node/bin/node" "${APP_ROOT}/node/bin/nodejs"; \ 
+    rm "node-v$NODE_VERSION-linux-$ARCH.tar.xz" SHASUMS256.txt.asc SHASUMS256.txt; \ 
+#
+#
+# Install the YARN Packet Manager
+#
+    set -ex; \
+    for key in \
+        6A010C5166006599AA17F08146C2130DFD2497F5 \
+    ;   do \
+            gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key"; \
+        done; \
+    curl -fSLO --compressed "https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz"; \ 
+    curl -fSLO --compressed "https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz.asc"; \ 
+    gpg --batch --verify yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz; \ 
+    tar -xzf "yarn-v$YARN_VERSION.tar.gz" -C "${APP_ROOT}"; \ 
+    ln -s "${APP_ROOT}/yarn-v$YARN_VERSION" "${APP_ROOT}/yarn"; \ 
+    rm yarn-v$YARN_VERSION.tar.gz.asc yarn-v$YARN_VERSION.tar.gz; \
+#
+#
+#
+#
+	export PATH="${APP_ROOT}/bin:${APP_ROOT}/node/bin:${APP_ROOT}/yarn/bin:${PATH}"; \
+#
+#
+# Install the PM2 Node process manager and make it available for general use
+#
+	yarn global add pm2 --global-folder "${APP_ROOT}/pm2" --prefix "${APP_ROOT}"; \
+#
+#
+# Final system update and reduce image size by removing files that are used only for building the image
+#
+    yum -y erase \
+		dpkg \
+		wget \
+		epel-release \
+	; \
+    yum -q -y clean all; \
+#
+#
+# Clean yum cache and logs
+#
+    rm -f /etc/yum.repos.d/*.rpm; \
+#
+# Rebuild the RPM Database
+#
+    rm -f /var/lib/rpm/__db*; \
+    rpm --rebuilddb; \
+#
+    rm -rf /var/cache/*;\
+    rm -rf /var/temp;\
+    rm -f /var/log/* \
+	;
+
+#
+# Copy container startup script
+#
+COPY bin/ ${APP_ROOT}/bin/
+Copy etc/ /etc/node-pm2/
+
+#
+# Ammend the access rights to the configuration areas
+# This will only work if the runtime user is member of the root group - this is the case with openshift
+# In non openshift environment we should do the configuration volume initialization before attaching or make the executing user member of the root group
+#
+# add permisions to the application
+# in addition allow the non root user to insert the anonymous openshift user if we want to use it
+# and ensure we can read the config files
+#
+RUN  \
+    mkdir -p /var/lib/node; \
+    chmod -R u+x ${APP_ROOT}/bin && \
+    chmod -R u+x ${APP_ROOT}/node/bin && \
+    chmod -R u+x ${APP_ROOT}/yarn/bin && \
+    chgrp -R 0 ${APP_ROOT} && \
+    chmod -R g=u ${APP_ROOT} /etc/passwd /var/lib/node /etc/node-pm2 \
+    ; 
+
+CMD     ["bash"]
