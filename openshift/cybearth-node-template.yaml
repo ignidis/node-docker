@@ -1,0 +1,247 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: cybearth-node
+  labels:
+    app: node
+  annotations:
+    description: "This template creates all openshift items required to run cybearth's node js based services"
+    iconClass: "icon-nodejs"
+    tags: "runtime, javascript"
+parameters:
+- name: NAMESPACE
+  displayName: "Project Namespace"
+  description: "Use this parameter to set the Namespace (aka Project Name) the template shall use."
+  value: "sandbox"
+  required: true
+- name: PM2_CCI_HOSTNAME
+  displayName: "PM2 CCI URL Hostname"
+  description: "Use this parameter to set the hostname Openshift shall use to create the URL for the CCI GUI."
+  value: "node-cci-sandbox"
+  required: true
+- name: PM2_CCI_PORT
+  displayName: "PM2 CCI listening port"
+  description: "TCP Port used by the PM2 Command and Control GUI."
+  value: "8088"
+  required: true
+- name: VOLUME_CAPACITY
+  displayName: "Volume Capacity"
+  description: "Volume space available for node modules, e.g. 512Mi, 2Gi."
+  value: "10Gi"
+  required: true
+objects:
+- apiVersion: v1
+  kind: PersistentVolumeClaim
+  metadata:
+    name: var-lib-node-claim
+    labels:
+      app: node
+    annotations:
+      volume.alpha.kubernetes.io/storage-class: glusterfs-storage
+  spec:
+    storageClassName: glusterfs-storage
+    accessModes:
+    - ReadWriteMany 
+    resources:
+     requests:
+       storage: ${VOLUME_CAPACITY}
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: glusterfs-dynamic-var-lib-node-claim
+    labels:
+      app: node
+      gluster.kubernetes.io/provisioned-for-pvc: var-lib-node-claim
+  spec:
+    ports:
+      - port: 1
+        protocol: TCP
+        targetPort: 1
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    name: node
+    labels:
+      app: node
+  spec:
+    replicas: 1
+    selector:
+      app: node
+      deploymentconfig: node
+    strategy:
+      activeDeadlineSeconds: 21600
+      recreateParams:
+        timeoutSeconds: 600
+      resources: {}
+      rollingParams:
+        intervalSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+      type: Recreate
+    template:
+      metadata:
+        labels:
+          app: node
+          deploymentconfig: node
+      spec:
+        containers:
+          - image:  >-
+              docker-registry.default.svc:5000/${NAMESPACE}/node
+            imagePullPolicy: Always
+            lifecycle:
+              preStop:
+                exec:
+                  command:
+                    - pm2
+                    - stop
+                    - all
+            name: node
+            ports:
+              - containerPort: 8088
+                protocol: TCP
+            resources: {}
+            terminationMessagePath: /dev/termination-log
+            terminationMessagePolicy: File
+            volumeMounts:
+              - mountPath: /var/lib/node
+                name: vol-var-lib-node
+              - mountPath: /etc/node.pm2
+                name: vol-etc-node-pm2
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {}
+        terminationGracePeriodSeconds: 60
+        volumes:
+          - name: vol-var-lib-node
+            persistentVolumeClaim:
+              claimName: var-lib-node-claim
+          - configMap:
+              defaultMode: 420
+              name: etc-node.pm2
+            name: vol-etc-node-pm2
+    test: false
+    triggers:
+      - type: ConfigChange
+      - imageChangeParams:
+          automatic: true
+          containerNames:
+            - node
+          from:
+            kind: ImageStreamTag
+            name: 'node:10.16.0-amd64-centos'
+        type: ImageChange
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: node-cci
+    labels:
+      app: node
+  spec:
+    type: ClusterIP
+    ports:
+    - port: ${{PM2_CCI_PORT}}
+      targetPort: 8088
+      protocol: TCP
+      name: pm2-cci
+    selector:
+      app: node
+      deploymentconfig: node
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: node-cci
+    labels:
+      app: node
+  spec:
+    host: ${PM2_CCI_HOSTNAME}.os.cybearth.net
+    port:
+      targetPort: pm2-cci
+    to:
+      kind: Service
+      name: node-cci
+      weight: 100
+    wildcardPolicy: None
+- apiVersion: v1
+  kind: ConfigMap
+  metadata:
+    name: etc-node.pm2
+    labels:
+      app: node
+  data:
+    pm2-gui.ini: |
+      ;                                                                                                                                                                                                                     
+      ; Home directory of pm2.                                                                                                                                                                                              
+      ;                                                                                                                                                                                                                     
+      pm2 = ~/.pm2                                                                                                                                                                                                          
+      ;                                                                                                                                                                                                                     
+      ; The interval between communications of Monitor.                                                                                                                                                                     
+      ;                                                                                                                                                                                                                     
+      refresh = 2500                                                                                                                                                                                                        
+      ;                                                                                                                                                                                                                     
+      ; Port of Web server and socket agent.                                                                                                                                                                                
+      ;                                                                                                                                                                                                                     
+      port = 8088                                                                                                                                                                                                           
+      ;                                                                                                                                                                                                                     
+      ; A value indicates whether or not run the pm2-gui damonized.                                                                                                                                                         
+      ;                                                                                                                                                                                                                     
+      daemonize = true                                                                                                                                                                                                      
+      ;                                                                                                                                                                                                                     
+      ; A value indicates whether or not the action buttons (i.e. `restart`, `stop all`...) should be displayed on web page.                                                                                                
+      ;                                                                                                                                                                                                                     
+      readonly = false                                                                                                                                                                                                      
+                                                                                                                                                                                                                            
+      [log]                                                                                                                                                                                                                 
+      ;                                                                                                                                                                                                                     
+      ; Log directory.                                                                                                                                                                                                      
+      ;                                                                                                                                                                                                                     
+      dir = ./logs                                                                                                                                                                                                          
+      ;                                                                                                                                                                                                                     
+      ; A value indicates whether or not display the [INFO], [ERROR].. prefixes before log message.                                                                                                                         
+      ;                                                                                                                                                                                                                     
+      prefix = true                                                                                                                                                                                                         
+      ;                                                                                                                                                                                                                     
+      ; A value indicates whether or not display the local date string before log message.                                                                                                                                  
+      ;                                                                                                                                                                                                                     
+      date = true                                                                                                                                                                                                          
+      ;                                                                                                                                                                                                                     
+      ; Log level, one of debug, log, info, warn, error.                                                                                                                                                                    
+      ;                                                                                                                                                                                                                     
+      level = info                                                                                                                                                                                                         
+      ;                                                                                                                                                                                                                     
+      ; Socket.io origins check, e.g.:                                                                                                                                                                                      
+      ;   origins = 'example.com:* http://example.com <http://example.com/>:* http://www.example.com:8088'                                                                                                                                        
+      ; By default:                                                                                                                                                                                                         
+      ;   origins = *:*                                                                                                                                                                                                     
+                                                                                                                                                                                                                            
+      [agent]                                                                                                                                                                                                               
+      ;                                                                                                                                                                                                                     
+      ; This authorization will be used to authorize socket / web connections if it's set.
+      ; Change after deployment ;)                                                                                                                                 
+      ;                                                                                                                                                                                                                     
+      authorization = AuTh                                                                                                                                                                                                  
+      ;                                                                                                                                                                                                                     
+      ; A value indicates whether agent offline or not.                                                                                                                                                                     
+      ;                                                                                                                                                                                                                     
+      ; offline = true                                                                                                                                                                                                      
+      [remotes]                                                                                                                                                                                                             
+      ;                                                                                                                                                                                                                     
+      ; the dashboard and web server will use this section to connect remoting socket server                                                                                                                                
+      ;   server_name = [authorization@]host:port                                                                                                                                                                           
+      ;                                                                                                                                                                                                                     
+      ; pm2@171 = AuTh@https://192.168.1.171:9002/sockserv                                                                                                                                                                  
+      ; pm2@172 = 192.168.1.172:9001                                                                                                                                                                                        
+      ; pm2@173 = 192.168.1.173:9000                                                                                                                                                                                        
+      ;
+    services.config.js: |+
+      module.exports = {
+          apps : [{
+              name : "cci",
+              script: "/opt/global_packages/node_modules/pm2-gui/pm2-gui.js",
+              args : "start /etc/node.pm2/pm2-gui.ini"
+          }]
+      }
