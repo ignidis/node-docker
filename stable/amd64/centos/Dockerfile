@@ -42,9 +42,11 @@ LABEL summary="Platform for running ${NAME}-${NODE_SHORT_REPO}-${NODE_VERSION} o
 #
 # Setup runtime variables
 #
-ENV PATH=${APP_ROOT}/bin:${APP_ROOT}/node/bin:${APP_ROOT}/yarn/bin:${PATH}
+ENV PATH=${APP_ROOT}/bin:${APP_ROOT}/node/bin:${APP_ROOT}/yarn/bin:${PATH} \
+    HOME=/var/lib/node
+
 EXPOSE 9615
-VOLUME ["/var/lib/node"]
+VOLUME [${HOME}]
 
 # Set start command
 #
@@ -54,5 +56,5 @@ USER    ${NODE_SVC_UID}
 WORKDIR ${APP_ROOT}
 
 ENTRYPOINT [ "bin/init" ]
-CMD     ["pm2-runtime","--no-auto-exit","/etc/node-pm2/services.config.js"]
+CMD     ["pm2-runtime","--web","--no-auto-exit","/etc/node.pm2/services.config.js"]
 #CMD     ["bash"]

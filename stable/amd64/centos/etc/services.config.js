@@ -1,8 +1,7 @@
 module.exports = {
-	script: "serve",
-  	env: {
-    	PM2_SERVE_PATH: '.',
-    	PM2_SERVE_PORT: 8080
-	}
+    apps : [{
+	name : "cci",
+	script: "/opt/global_packages/node_modules/pm2-gui/pm2-gui.js"
+    }]
 }
 

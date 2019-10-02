@@ -27,59 +27,56 @@ RUN \
 #
 # Define Service Account variables
 #
-	SERVICE_USER=${NODE_SVC_NAME}; \
-	SERVICE_USER_UID=${NODE_SVC_UID}; \
-	SERVICE_GROUP=${NODE_SVC_NAME}; \
-	SERVICE_GROUP_UID=${NODE_SVC_UID}; \
+    SERVICE_USER=${NODE_SVC_NAME}; \
+    SERVICE_USER_UID=${NODE_SVC_UID}; \
+    SERVICE_GROUP=${NODE_SVC_NAME}; \
+    SERVICE_GROUP_UID=${NODE_SVC_UID}; \
 #
 # Create service group and service account
 #
-	groupadd -g "$SERVICE_GROUP_UID" "$SERVICE_GROUP"; \
-	useradd -u "$SERVICE_USER_UID" -g "$SERVICE_GROUP" -G root --shell /bin/bash -M --home /var/lib/node "$SERVICE_USER"; \
-#
-# Update Base image
-#
-#	yum -y update && yum -y upgrade; \ 
+    groupadd -g "$SERVICE_GROUP_UID" "$SERVICE_GROUP"; \
+    useradd -u "$SERVICE_USER_UID" -g "$SERVICE_GROUP" -G root --shell /bin/bash -M --home /var/lib/node "$SERVICE_USER"; \
 #
 #
-# Add EPEL official repositories for required dependencies
-#
-    yum install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm; \
+# No need to update Base image on install EPEL as this is already in the cybearth base image
 #
 # Install helper packages
 #
-	yum -y install \
-		wget \
-		epel-release \
-		dpkg \
-	;
+    yum -y install \
+        wget \
+        dpkg \
+    ;
 #
 #
 # Install nodeJS and supporting packages
 #
 RUN \
     ln -s -f /bin/true /usr/bin/chfn; \
-    mkdir -p "${APP_ROOT}"; \ 
+    mkdir -p "${APP_ROOT}" \
+    ;
 #
 #
 # Install the nodeJS Runtime
+#
+RUN \
 #
 # Add the nodeJS Release team's, gpg keys to our keyring
 # gpg keys listed at https://github.com/nodejs/node#release-team
     set -ex; \
     for key in \
-		4ED778F539E3634C779C87C6D7062848A1AB005C \
-		B9E2F5981AA6E0CD28160D9FF13993A75599653C \
-		B9AE9905FFD7803F25714661B63B535A4C206CA9 \
-		77984A986EBC2AA786BC0F66B01FBB92821C587A \
-		71DCFD284A79C3B38668286BC97EC7A07EDE3FC1 \
-		FD3A5288F042B6850C66B31F09FE44734EB7990E \
-		8FCCA13FEF1D0C2E91008E09770F7A9A5AE15600 \
-		C4F0DFFF4E8C1A8236409D08E73BC641CC11F4C8 \
+        4ED778F539E3634C779C87C6D7062848A1AB005C \
+        B9E2F5981AA6E0CD28160D9FF13993A75599653C \
+        B9AE9905FFD7803F25714661B63B535A4C206CA9 \
+        77984A986EBC2AA786BC0F66B01FBB92821C587A \
+        71DCFD284A79C3B38668286BC97EC7A07EDE3FC1 \
+        FD3A5288F042B6850C66B31F09FE44734EB7990E \
+        8FCCA13FEF1D0C2E91008E09770F7A9A5AE15600 \
+        C4F0DFFF4E8C1A8236409D08E73BC641CC11F4C8 \
         DD8F2338BAE7501E3DD5AC78C273792F7D83545D \
-		A48C2BEE680E841632CD4E44F07496B3EB3C1762 \
+        A48C2BEE680E841632CD4E44F07496B3EB3C1762 \
     ;   do \
             gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key"; \
+            sleep 1; \
         done; \
     ARCH= \ 
         dpkgArch="$(dpkg --print-architecture)"; \
@@ -109,6 +106,7 @@ RUN \
         6A010C5166006599AA17F08146C2130DFD2497F5 \
     ;   do \
             gpg --keyserver ha.pool.sks-keyservers.net --recv-keys "$key"; \
+            sleep 1; \
         done; \
     curl -fSLO --compressed "https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz"; \ 
     curl -fSLO --compressed "https://yarnpkg.com/downloads/$YARN_VERSION/yarn-v$YARN_VERSION.tar.gz.asc"; \ 
@@ -120,21 +118,24 @@ RUN \
 #
 #
 #
-	export PATH="${APP_ROOT}/bin:${APP_ROOT}/node/bin:${APP_ROOT}/yarn/bin:${PATH}"; \
+    export PATH="${APP_ROOT}/bin:${APP_ROOT}/node/bin:${APP_ROOT}/yarn/bin:${PATH}"; \
 #
 #
-# Install the PM2 Node process manager and make it available for general use
+# Install the PM2 Node process manager and the PM2-GUI 
 #
-	yarn global add pm2 --global-folder "${APP_ROOT}/pm2" --prefix "${APP_ROOT}"; \
+    yarn global add pm2 pm2-gui --global-folder "${APP_ROOT}/global_packages" --prefix "${APP_ROOT}" --pnp; \
+#
+# we want the cci gui to be started via pm2-runtime so that we can monitor this process too, thus we remove the pm2-gui cli from the path
+#
+    rm ${APP_ROOT}/bin/pm2-gui; \
 #
 #
 # Final system update and reduce image size by removing files that are used only for building the image
 #
     yum -y erase \
-		dpkg \
-		wget \
-		epel-release \
-	; \
+    dpkg \
+    wget \
+    ;\
     yum -q -y clean all; \
 #
 #
@@ -150,13 +151,17 @@ RUN \
     rm -rf /var/cache/*;\
     rm -rf /var/temp;\
     rm -f /var/log/* \
-	;
+    ;
 
 #
 # Copy container startup script
 #
 COPY bin/ ${APP_ROOT}/bin/
-Copy etc/ /etc/node-pm2/
+#
+# Copy the default configuration for pm2 and pm2-gui to the path where we will mount the config map (openshift) or persistent config volume
+#
+COPY etc/ /etc/node.pm2/
+RUN  cp ${APP_ROOT}/global_packages/node_modules/pm2-gui/pm2-gui.ini /etc/node.pm2/pm2-gui.ini;
 
 #
 # Ammend the access rights to the configuration areas
@@ -173,7 +178,7 @@ RUN  \
     chmod -R u+x ${APP_ROOT}/node/bin && \
     chmod -R u+x ${APP_ROOT}/yarn/bin && \
     chgrp -R 0 ${APP_ROOT} && \
-    chmod -R g=u ${APP_ROOT} /etc/passwd /var/lib/node /etc/node-pm2 \
+    chmod -R g=u ${APP_ROOT} /etc/passwd /var/lib/node /etc/node.pm2 \
     ; 
 
 CMD     ["bash"]
