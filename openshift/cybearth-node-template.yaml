@@ -111,6 +111,9 @@ objects:
                 name: vol-var-lib-node
               - mountPath: /etc/node.pm2
                 name: vol-etc-node-pm2
+            env:
+              - name: TZ
+                value: "Europe/Berlin"
         dnsPolicy: ClusterFirst
         restartPolicy: Always
         schedulerName: default-scheduler
