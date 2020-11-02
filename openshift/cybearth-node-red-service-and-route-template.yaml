@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Template
+metadata:
+  name: cybearth-node-red-config
+  labels:
+    app: node
+  annotations:
+    description: "This template creates all openshift items required to run node-red on top of the cybearth's node js based services"
+    iconClass: "icon-nodejs"
+    tags: "runtime, javascript"
+objects:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    name: node-red
+    labels:
+      app: node
+  spec:
+    type: ClusterIP
+    ports:
+    - port: 1880
+      targetPort: 1880
+      protocol: TCP
+      name: node-red
+    selector:
+      app: node
+      deploymentconfig: node
+- apiVersion: v1
+  kind: Route
+  metadata:
+    name: node-red
+    labels:
+      app: node
+  spec:
+    host: node-red.os.cybearth.net
+    port:
+      targetPort: node-red
+    to:
+      kind: Service
+      name: node-red
+      weight: 100
+    wildcardPolicy: None

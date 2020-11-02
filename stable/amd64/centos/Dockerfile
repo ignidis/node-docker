@@ -56,5 +56,5 @@ USER    ${NODE_SVC_UID}
 WORKDIR ${APP_ROOT}
 
 ENTRYPOINT [ "bin/init" ]
-CMD     ["pm2-runtime","--web","--no-auto-exit","/etc/node.pm2/services.config.js"]
+CMD     ["pm2-runtime","--no-auto-exit","/etc/node.pm2/services.config.js"]
 #CMD     ["bash"]
